@@ -3,6 +3,21 @@ use juniper::{EmptyMutation, RootNode};
 extern crate dotenv;
 use std::env;
 
+// Handle Database
+use diesel::pg::PgConnection;
+use diesel::prelude::*;
+use dotenv::dotenv;
+
+
+use crate::schema::members;
+
+
+pub type Schema = RootNode<'static, QueryRoot, EmptyMutation<()>>;
+
+    pub fn create_schema() -> Schema {
+      Schema::new(QueryRoot {}, EmptyMutation::new())
+    }
+
 #[derive(Queryable)]
 pub struct Member {
   pub id: i32,
@@ -49,28 +64,33 @@ impl Team {
   pub fn members(&self) -> Vec<Member> {
     vec![]
   }
+
+  pub fn members(&self) -> Vec<Member> {
+    use crate::schema::members::dsl::*;
+    let connection = establish_connection();
+    members.filter(team_id.eq(self.id)).limit(100).load::<Member>(&connection).expect("Error loading members")
+  }
 }
 
 pub struct QueryRoot;
 
-#[juniper::object]
-impl QueryRoot {
-  fn members() -> Vec<Member> {
-    vec![
-      Member {
-        id: 1,
-        name: "Link".to_owned(),
-      },
-      Member {
-        id: 2,
-        name: "Mario".to_owned(),
-      }
-    ]
-  }
+fn establish_connection() -> PgConnection {
+  dotenv().ok();
+  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+  PgConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
 }
 
-pub type Schema = RootNode<'static, QueryRoot, EmptyMutation<()>>;
+#[juniper::object]
+impl QueryRoot {
+  fn members() -> Vec<Member> {   
+    use crate::schema::members::dsl::*;
+    let connection = establish_connection();
+    members.limit(100).load::<Member>(&connection).expect("Error loading members")
+  }
 
-    pub fn create_schema() -> Schema {
-      Schema::new(QueryRoot {}, EmptyMutation::new())
-    }
+  fn teams() -> Vec<Team> {
+    use crate::schema::teams::dsl::*;
+    let connection = establish_connection(); 
+    teams.limit(10).load::<Team>(&connection).expect("Error loading teams")
+  }
+}
